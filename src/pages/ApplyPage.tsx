@@ -109,7 +109,10 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
       if (!form.document_names.some((d) => d.includes('GST'))) {
         newErrors.document_names = 'GST Certificate is mandatory';
       }
-      if (selectedFiles.length < 3) newErrors.document_names = 'Select at least 3 real files to upload';
+      if (selectedFiles.length < form.document_names.length) {
+        newErrors.document_names = `You selected ${form.document_names.length} document types but only ${selectedFiles.length} real file${selectedFiles.length === 1 ? '' : 's'}; choose one file for each selected document.`;
+      }
+      if (selectedFiles.length < 3) newErrors.document_names = `Choose at least 3 real files before continuing. You currently selected ${selectedFiles.length}.`;
       if (selectedFiles.some((file) => !['application/pdf', 'image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024)) {
         newErrors.document_names = 'Files must be PDF, JPG, or PNG and no larger than 10 MB';
       }
@@ -408,7 +411,7 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
               <label className="mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 cursor-pointer hover:border-blue-400 transition-colors">
                 <Upload className="w-7 h-7 text-blue-700" />
                 <span className="text-sm font-semibold text-blue-900">Choose real files to upload</span>
-                <span className="text-xs text-blue-700">PDF, JPG, or PNG · maximum 10 MB each</span>
+                <span className="text-xs text-blue-700">Choose one real file for each checked document type · PDF, JPG, or PNG · maximum 10 MB each</span>
                 <input
                   type="file"
                   multiple
@@ -423,7 +426,7 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
                 </div>
               )}
               <p className="text-sm text-gray-500 mt-2">
-                {selectedFiles.length} real file(s) selected. Files are stored privately for officer review.
+                {selectedFiles.length} real file(s) selected for {form.document_names.length} checked document type(s). Choose at least 3 matching files to continue.
               </p>
             </div>
           )}
