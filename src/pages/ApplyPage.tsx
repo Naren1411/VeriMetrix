@@ -30,16 +30,6 @@ interface ApplyPageProps {
 
 const STEPS = ['Applicant Details', 'Instrument Details', 'Document Upload', 'Review & Submit'];
 
-const DOCUMENT_OPTIONS = [
-  'GST Certificate.pdf',
-  'Manufacturer Certificate.pdf',
-  'Previous Verification Certificate.pdf',
-  'Invoice.pdf',
-  'Installation Photograph.jpg',
-  'NABL Calibration Report.pdf',
-  'PESO Licence.pdf',
-];
-
 export default function ApplyPage({ onNavigate }: ApplyPageProps) {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -75,15 +65,6 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
     setErrors((prev) => ({ ...prev, [field]: '' }));
   };
 
-  const toggleDocument = (doc: string) => {
-    setForm((prev) => ({
-      ...prev,
-      document_names: prev.document_names.includes(doc)
-        ? prev.document_names.filter((d) => d !== doc)
-        : [...prev.document_names, doc],
-    }));
-  };
-
   const validateStep = (stepIndex: number): boolean => {
     const newErrors: Record<string, string> = {};
     if (stepIndex === 0) {
@@ -105,13 +86,6 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
       if (!form.purpose.trim()) newErrors.purpose = 'Purpose of use is required';
     }
     if (stepIndex === 2) {
-      if (form.document_names.length < 3) newErrors.document_names = 'Upload at least 3 documents including GST Certificate';
-      if (!form.document_names.some((d) => d.includes('GST'))) {
-        newErrors.document_names = 'GST Certificate is mandatory';
-      }
-      if (selectedFiles.length < form.document_names.length) {
-        newErrors.document_names = `You selected ${form.document_names.length} document types but only ${selectedFiles.length} real file${selectedFiles.length === 1 ? '' : 's'}; choose one file for each selected document.`;
-      }
       if (selectedFiles.length < 3) newErrors.document_names = `Choose at least 3 real files before continuing. You currently selected ${selectedFiles.length}.`;
       if (selectedFiles.some((file) => !['application/pdf', 'image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024)) {
         newErrors.document_names = 'Files must be PDF, JPG, or PNG and no larger than 10 MB';
@@ -141,6 +115,7 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
       const office = jurisdiction?.office || `Office of the Controller of Legal Metrology, ${form.district}`;
       const officerName = jurisdiction?.officer || `Verification Officer, ${form.district}`;
 
+      const uploadedDocumentNames = selectedFiles.map((file) => file.name);
       const { data, error: submitError } = await supabase.rpc('submit_application', {
         payload: {
           application_number: applicationNumber,
@@ -162,7 +137,7 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
           capacity_range: form.capacity_range,
           installation_location: form.installation_location,
           purpose: form.purpose,
-          document_names: form.document_names,
+          document_names: uploadedDocumentNames,
         },
       });
 
@@ -395,28 +370,23 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
               <div className="bg-blue-50 rounded-lg p-4 flex items-start gap-2 mb-2">
                 <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-blue-800">
-                  Select the documents you are submitting with this application. GST Certificate is mandatory. At least 3 documents are required.
+                  Upload at least 3 real supporting files. The uploaded filenames are saved with your application for officer review.
                 </p>
               </div>
               {errors.document_names && <p className="text-sm text-red-600">{errors.document_names}</p>}
-              <div className="grid md:grid-cols-2 gap-3">
-                {DOCUMENT_OPTIONS.map((doc) => (
-                  <label key={doc} className={`flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-all ${form.document_names.includes(doc) ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <input type="checkbox" checked={form.document_names.includes(doc)} onChange={() => toggleDocument(doc)} className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" />
-                    <FileCheck className={`w-5 h-5 ${form.document_names.includes(doc) ? 'text-blue-700' : 'text-gray-400'}`} />
-                    <span className="text-sm font-medium text-gray-900">{doc}</span>
-                  </label>
-                ))}
-              </div>
               <label className="mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 cursor-pointer hover:border-blue-400 transition-colors">
                 <Upload className="w-7 h-7 text-blue-700" />
                 <span className="text-sm font-semibold text-blue-900">Choose real files to upload</span>
-                <span className="text-xs text-blue-700">Choose one real file for each checked document type · PDF, JPG, or PNG · maximum 10 MB each</span>
+                <span className="text-xs text-blue-700">PDF, JPG, or PNG · maximum 10 MB each · minimum 3 files</span>
                 <input
                   type="file"
                   multiple
                   accept="application/pdf,image/jpeg,image/png"
-                  onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    setSelectedFiles(files);
+                    setForm((prev) => ({ ...prev, document_names: files.map((file) => file.name) }));
+                  }}
                   className="sr-only"
                 />
               </label>
@@ -426,7 +396,7 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
                 </div>
               )}
               <p className="text-sm text-gray-500 mt-2">
-                {selectedFiles.length} real file(s) selected for {form.document_names.length} checked document type(s). Choose at least 3 matching files to continue.
+                {selectedFiles.length} real file(s) selected. Choose at least 3 valid files to continue.
               </p>
             </div>
           )}
