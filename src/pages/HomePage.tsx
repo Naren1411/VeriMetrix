@@ -27,10 +27,10 @@ const WORKFLOW_STEPS = [
 ];
 
 const STATS = [
-  { icon: Users, value: '12,400+', label: 'Applicants Registered' },
-  { icon: FileCheck, value: '38,900+', label: 'Applications Processed' },
-  { icon: Award, value: '31,200+', label: 'Certificates Issued' },
-  { icon: Building2, value: '640+', label: 'Verification Offices' },
+  { icon: Users, value: '1', label: 'Citizen-facing portal' },
+  { icon: FileCheck, value: '7', label: 'Workflow stages modeled' },
+  { icon: Award, value: '24/7', label: 'Public certificate lookup' },
+  { icon: Building2, value: 'Multi-state', label: 'Jurisdiction-ready design' },
 ];
 
 export default function HomePage({ onNavigate }: HomePageProps) {
@@ -47,14 +47,14 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-sm font-medium mb-6">
                 <ShieldCheck className="w-4 h-4" />
-                Government of India · Legal Metrology
+                SIH prototype · Legal Metrology workflow
               </div>
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
                 Trusted Measurements.<br />
                 <span className="text-blue-200">Safer Markets.</span>
               </h1>
               <p className="text-lg text-blue-100 leading-relaxed mb-8 max-w-xl">
-                VeriMetrix is the national digital platform for verification and certification of weighing and measuring instruments. Apply online, track your application, and receive a verifiable digital certificate.
+                VeriMetrix is a pilot-ready digital workflow for verification and certification of weighing and measuring instruments. Apply online, track your application, and verify certificates from one accountable record.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <button

@@ -20,7 +20,7 @@ export default function Footer({ onNavigate }: FooterProps) {
               </div>
             </div>
             <p className="text-sm text-gray-400 leading-relaxed">
-              The national digital platform for verification and certification of weighing and measuring instruments under the Legal Metrology framework.
+              A pilot-ready digital workflow for verification and certification of weighing and measuring instruments under the Legal Metrology framework.
             </p>
           </div>
 
@@ -49,19 +49,19 @@ export default function Footer({ onNavigate }: FooterProps) {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-400" />
-                <span>Department of Legal Metrology, Government of India</span>
+                <span>Legal Metrology workflow prototype</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="w-4 h-4 flex-shrink-0 text-blue-400" />
-                <span>1800-XXX-XXXX (Toll Free)</span>
+                <span>Contact details configured at pilot launch</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 flex-shrink-0 text-blue-400" />
-                <span>help@verimetrix.gov.in</span>
+                <span>Secure notification channel planned</span>
               </li>
               <li className="flex items-center gap-2">
                 <Globe className="w-4 h-4 flex-shrink-0 text-blue-400" />
-                <span>www.legalmetrology.gov.in</span>
+                <span>For demonstration and evaluation</span>
               </li>
             </ul>
           </div>

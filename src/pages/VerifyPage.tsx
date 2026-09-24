@@ -180,7 +180,7 @@ export default function VerifyPage({ onNavigate }: VerifyPageProps) {
                 <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                    <span>Digitally signed · Authentic record</span>
+                    <span>{certificate.signature_present ? 'RSA-PSS signature present · Verify with authority key' : 'Authenticated registry record'}</span>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${CERTIFICATE_COLORS[effectiveStatus || certificate.status].bg} ${CERTIFICATE_COLORS[effectiveStatus || certificate.status].text} border ${CERTIFICATE_COLORS[effectiveStatus || certificate.status].border}`}>
                     {effectiveStatus}

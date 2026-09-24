@@ -46,6 +46,7 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
   const [submittedApp, setSubmittedApp] = useState<VerificationApplication | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const [form, setForm] = useState({
     applicant_name: '',
@@ -108,6 +109,10 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
       if (!form.document_names.some((d) => d.includes('GST'))) {
         newErrors.document_names = 'GST Certificate is mandatory';
       }
+      if (selectedFiles.length < 3) newErrors.document_names = 'Select at least 3 real files to upload';
+      if (selectedFiles.some((file) => !['application/pdf', 'image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024)) {
+        newErrors.document_names = 'Files must be PDF, JPG, or PNG and no larger than 10 MB';
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -126,15 +131,15 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
   const handleSubmit = async () => {
     setSubmitting(true);
     setError(null);
+    const uploadedPaths: string[] = [];
     try {
       const applicationNumber = generateApplicationNumber(form.state, form.district);
       const jurisdiction = JURISDICTION_OFFICERS[`${form.state}:${form.district}`];
       const office = jurisdiction?.office || `Office of the Controller of Legal Metrology, ${form.district}`;
       const officerName = jurisdiction?.officer || `Verification Officer, ${form.district}`;
 
-      const { data, error: insertError } = await supabase
-        .from('verification_applications')
-        .insert({
+      const { data, error: submitError } = await supabase.rpc('submit_application', {
+        payload: {
           application_number: applicationNumber,
           applicant_name: form.applicant_name,
           email: form.email,
@@ -155,60 +160,37 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
           installation_location: form.installation_location,
           purpose: form.purpose,
           document_names: form.document_names,
-          status: 'Submitted',
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      await supabase.from('workflow_events').insert([
-        {
-          application_id: data.id,
-          event_type: 'submission',
-          event_label: 'Application Submitted',
-          actor_name: form.applicant_name,
-          event_status: 'Completed',
-          notes: `Application submitted through online portal with ${form.document_names.length} document(s).`,
         },
-        {
-          application_id: data.id,
-          event_type: 'routing',
-          event_label: 'Jurisdiction Routing',
-          actor_name: 'System',
-          event_status: 'Completed',
-          notes: `Routed to ${office} based on installation address in ${form.district}, ${form.state}.`,
-        },
-      ]);
+      });
 
-      const requiredDocuments = ['GST Certificate.pdf', 'Manufacturer Certificate.pdf', 'Invoice.pdf'];
-      const missingDocuments = requiredDocuments.filter((document) => !form.document_names.includes(document));
-      await supabase.from('document_checks').insert([
-        ...form.document_names.map((document) => ({
-          application_id: data.id,
-          document_name: document,
-          check_type: 'presence',
-          status: 'passed',
-          details: 'Document selected in the application submission.',
-        })),
-        ...missingDocuments.map((document) => ({
-          application_id: data.id,
-          document_name: document,
-          check_type: 'missing-file',
-          status: 'needs_attention',
-          details: 'Required document was not selected during submission.',
-        })),
-        {
-          application_id: data.id,
-          document_name: 'Application form',
-          check_type: 'serial-number-match',
-          status: 'needs_attention',
-          details: 'OCR comparison will run when binary document storage is connected; applicant serial recorded as ' + form.serial_number + '.',
-        },
-      ]);
+      if (submitError) throw submitError;
+      if (!data?.id) throw new Error('Application was created without an ID. Please run the latest database migrations.');
+
+      for (const file of selectedFiles) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storagePath = `applications/${data.id}/${crypto.randomUUID()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from('application-documents').upload(storagePath, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+        if (uploadError) throw new Error(`Document upload failed for ${file.name}: ${uploadError.message}`);
+        uploadedPaths.push(storagePath);
+        const { error: recordError } = await supabase.rpc('record_application_document', {
+          application_id_input: data.id,
+          application_email_input: form.email,
+          document_name_input: file.name,
+          storage_path_input: storagePath,
+          mime_type_input: file.type,
+          byte_size_input: file.size,
+        });
+        if (recordError) throw new Error(`Document registration failed for ${file.name}: ${recordError.message}`);
+      }
 
       setSubmittedApp(data);
     } catch (err) {
+      if (uploadedPaths.length > 0) {
+        await supabase.storage.from('application-documents').remove(uploadedPaths);
+      }
       setError(err instanceof Error ? err.message : 'Failed to submit application. Please try again.');
     } finally {
       setSubmitting(false);
@@ -423,8 +405,25 @@ export default function ApplyPage({ onNavigate }: ApplyPageProps) {
                   </label>
                 ))}
               </div>
+              <label className="mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 cursor-pointer hover:border-blue-400 transition-colors">
+                <Upload className="w-7 h-7 text-blue-700" />
+                <span className="text-sm font-semibold text-blue-900">Choose real files to upload</span>
+                <span className="text-xs text-blue-700">PDF, JPG, or PNG · maximum 10 MB each</span>
+                <input
+                  type="file"
+                  multiple
+                  accept="application/pdf,image/jpeg,image/png"
+                  onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
+                  className="sr-only"
+                />
+              </label>
+              {selectedFiles.length > 0 && (
+                <div className="text-sm text-gray-600 space-y-1 mt-3">
+                  {selectedFiles.map((file) => <div key={`${file.name}-${file.size}`} className="flex justify-between"><span>{file.name}</span><span>{(file.size / 1024 / 1024).toFixed(2)} MB</span></div>)}
+                </div>
+              )}
               <p className="text-sm text-gray-500 mt-2">
-                {form.document_names.length} document(s) selected. In this demonstration, selecting a document marks it as uploaded.
+                {selectedFiles.length} real file(s) selected. Files are stored privately for officer review.
               </p>
             </div>
           )}

@@ -98,6 +98,15 @@ DROP POLICY IF EXISTS "Public can delete certificate records" ON public.certific
 DROP POLICY IF EXISTS "Public can read workflow events" ON public.workflow_events;
 DROP POLICY IF EXISTS "Public can update workflow events" ON public.workflow_events;
 DROP POLICY IF EXISTS "Public can delete workflow events" ON public.workflow_events;
+DROP POLICY IF EXISTS "Officers can read applications" ON public.verification_applications;
+DROP POLICY IF EXISTS "Public can submit applications" ON public.verification_applications;
+DROP POLICY IF EXISTS "Officers can update applications" ON public.verification_applications;
+DROP POLICY IF EXISTS "Public can create certificate records" ON public.certificate_records;
+DROP POLICY IF EXISTS "Officers can read certificates" ON public.certificate_records;
+DROP POLICY IF EXISTS "Officers can update certificates" ON public.certificate_records;
+DROP POLICY IF EXISTS "Officers can read events" ON public.workflow_events;
+DROP POLICY IF EXISTS "Public can create events" ON public.workflow_events;
+DROP POLICY IF EXISTS "Officers can update events" ON public.workflow_events;
 
 CREATE POLICY "Officers can read applications" ON public.verification_applications FOR SELECT TO authenticated
   USING ((auth.jwt() -> 'app_metadata' ->> 'role') IN ('officer', 'admin'));
@@ -124,16 +133,20 @@ CREATE POLICY "Officers can update events" ON public.workflow_events FOR UPDATE 
   WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'role') IN ('officer', 'admin'));
 
 DROP POLICY IF EXISTS "Public jurisdiction read" ON public.jurisdiction_officers;
+DROP POLICY IF EXISTS "Authenticated staff can read jurisdiction" ON public.jurisdiction_officers;
 CREATE POLICY "Authenticated staff can read jurisdiction" ON public.jurisdiction_officers FOR SELECT TO authenticated
   USING ((auth.jwt() -> 'app_metadata' ->> 'role') IN ('officer', 'admin'));
 
 DO $$ DECLARE table_name text; BEGIN
   FOREACH table_name IN ARRAY ARRAY['inspection_schedules','inspection_checklists','notifications','document_checks','audit_logs'] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Public %s access" ON public.%I', table_name, table_name);
+    EXECUTE format('DROP POLICY IF EXISTS "Staff %s read" ON public.%I', table_name, table_name);
+    EXECUTE format('DROP POLICY IF EXISTS "Staff %s write" ON public.%I', table_name, table_name);
     EXECUTE format('CREATE POLICY "Staff %s read" ON public.%I FOR SELECT TO authenticated USING ((auth.jwt() -> ''app_metadata'' ->> ''role'') IN (''officer'', ''admin''))', table_name, table_name);
     EXECUTE format('CREATE POLICY "Staff %s write" ON public.%I FOR INSERT TO authenticated WITH CHECK ((auth.jwt() -> ''app_metadata'' ->> ''role'') IN (''officer'', ''admin''))', table_name, table_name);
   END LOOP;
 END $$;
 
+DROP POLICY IF EXISTS "Applicants can submit document checks" ON public.document_checks;
 CREATE POLICY "Applicants can submit document checks" ON public.document_checks FOR INSERT TO anon, authenticated
   WITH CHECK (true);

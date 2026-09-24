@@ -32,7 +32,6 @@ import {
   CERTIFICATE_COLORS,
   formatDate,
   formatDateTime,
-  generateCertificateId,
   type VerificationApplication,
   type WorkflowEvent,
   type CertificateRecord,
@@ -60,6 +59,7 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [impactMetrics, setImpactMetrics] = useState<{ total_applications: number; certificates_issued: number; cases_needing_correction: number; average_processing_days: number } | null>(null);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -77,6 +77,9 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
         .select('*')
         .order('created_at', { ascending: false });
       setCertificates(certData || []);
+
+      const { data: metricsData } = await supabase.from('workflow_impact_metrics').select('*').single();
+      setImpactMetrics(metricsData || null);
     } catch {
       setError('Unable to load applications. Please try again.');
     } finally {
@@ -86,6 +89,18 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
 
   useEffect(() => {
     loadApplications();
+  }, [loadApplications]);
+
+  useEffect(() => {
+    const realtimeChannel = supabase
+      .channel('officer-workflow-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'verification_applications' }, loadApplications)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'certificate_records' }, loadApplications)
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(realtimeChannel);
+    };
   }, [loadApplications]);
 
   const loadAppDetail = async (app: VerificationApplication) => {
@@ -101,36 +116,17 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
   const updateAppStatus = async (app: VerificationApplication, status: ApplicationStatus, eventType: string, eventLabel: string, notes: string, eventStatus: string = 'Completed') => {
     setActionLoading(true);
     try {
-      const { error: updateError } = await supabase
-        .from('verification_applications')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', app.id);
-      if (updateError) throw updateError;
-
-      await supabase.from('workflow_events').insert({
-        application_id: app.id,
-        event_type: eventType,
-        event_label: eventLabel,
-        actor_name: app.officer_name,
-        event_status: eventStatus,
-        notes,
+      const { error: transitionError } = await supabase.rpc('transition_application', {
+        application_id_input: app.id,
+        next_status: status,
+        event_type_input: eventType,
+        event_label_input: eventLabel,
+        notes_input: notes,
+        event_status_input: eventStatus,
       });
-
-      await supabase.from('audit_logs').insert({
-        application_id: app.id,
-        action: eventType,
-        from_status: app.status,
-        to_status: status,
-        actor_name: app.officer_name,
-        actor_role: 'Verification Officer',
-        details: notes,
-      });
-      await supabase.from('notifications').insert({
-        application_id: app.id,
-        recipient_email: app.email,
-        title: eventLabel,
-        message: notes,
-        channel: 'in-app',
+      if (transitionError) throw transitionError;
+      void supabase.functions.invoke('send-notification', {
+        body: { recipient_email: app.email, title: eventLabel, message: notes },
       });
 
       await loadApplications();
@@ -147,9 +143,15 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
   const scheduleInspection = async (app: VerificationApplication, schedule: { inspector_name: string; scheduled_date: string; scheduled_time: string; location: string }) => {
     setActionLoading(true);
     try {
-      const { error: scheduleError } = await supabase.from('inspection_schedules').insert({ application_id: app.id, ...schedule });
+      const { error: scheduleError } = await supabase.rpc('schedule_inspection', {
+        application_id_input: app.id,
+        inspector_name_input: schedule.inspector_name,
+        scheduled_date_input: schedule.scheduled_date,
+        scheduled_time_input: schedule.scheduled_time,
+        location_input: schedule.location,
+      });
       if (scheduleError) throw scheduleError;
-      await updateAppStatus(app, 'Inspection Scheduled', 'scheduling', 'Inspection Scheduled', `Inspection assigned to ${schedule.inspector_name} on ${schedule.scheduled_date} at ${schedule.scheduled_time}, ${schedule.location}.`);
+      await loadApplications();
     } catch {
       setError('Failed to save the inspection schedule. Please try again.');
       setActionLoading(false);
@@ -159,17 +161,14 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
   const submitInspection = async (app: VerificationApplication, responses: Record<string, string | boolean>, outcome: 'Passed' | 'Failed', remarks: string) => {
     setActionLoading(true);
     try {
-      const { error: checklistError } = await supabase.from('inspection_checklists').insert({
-        application_id: app.id,
-        category: app.instrument_category,
-        responses,
-        outcome,
-        remarks,
-        submitted_by: app.officer_name,
+      const { error: checklistError } = await supabase.rpc('submit_inspection', {
+        application_id_input: app.id,
+        responses_input: responses,
+        outcome_input: outcome,
+        remarks_input: remarks,
       });
       if (checklistError) throw checklistError;
-      const nextStatus: ApplicationStatus = outcome === 'Passed' ? 'Inspection Completed' : 'Returned';
-      await updateAppStatus(app, nextStatus, 'inspection', 'Physical Inspection', outcome === 'Passed' ? 'All category-specific inspection checks passed.' : `Inspection failed. Correction required before re-inspection. ${remarks}`, outcome);
+      await loadApplications();
     } catch {
       setError('Failed to submit the inspection result. Please try again.');
       setActionLoading(false);
@@ -181,19 +180,9 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
     if (!source) return;
     setActionLoading(true);
     try {
-      const renewalNumber = `${source.application_number}-R${new Date().getFullYear()}`;
-      const { data: renewal, error: renewalError } = await supabase.from('verification_applications').insert({
-        ...source,
-        id: undefined,
-        application_number: renewalNumber,
-        status: 'Renewal Requested',
-        submitted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        correction_reason: `Renewal of certificate ${cert.certificate_id}`,
-      }).select().single();
+      const { data: renewal, error: renewalError } = await supabase.rpc('request_renewal', { application_id_input: source.id });
       if (renewalError) throw renewalError;
-      await supabase.from('audit_logs').insert({ application_id: renewal.id, action: 'renewal_requested', from_status: null, to_status: 'Renewal Requested', actor_name: source.applicant_name, actor_role: 'Applicant', details: `Reused data from ${cert.certificate_id}.` });
-      await supabase.from('workflow_events').insert({ application_id: renewal.id, event_type: 'renewal', event_label: 'Renewal Requested', actor_name: source.applicant_name, event_status: 'Completed', notes: `Renewal application created from ${cert.certificate_id}.` });
+      if (!renewal) throw new Error('Renewal was not created');
       await loadApplications();
     } catch {
       setError('Unable to create the renewal application. Please try again.');
@@ -205,28 +194,22 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
   const issueCertificate = async (app: VerificationApplication) => {
     setActionLoading(true);
     try {
-      const certId = generateCertificateId(app.state, app.application_number);
       const validUntil = new Date();
       validUntil.setFullYear(validUntil.getFullYear() + 1);
       validUntil.setDate(validUntil.getDate() - 1);
-
-      const verificationLink = `${window.location.origin}/verify?certificate=${encodeURIComponent(certId)}`;
-      const { data: cert, error: certError } = await supabase
-        .from('certificate_records')
-        .insert({
-          application_id: app.id,
-          certificate_id: certId,
-          status: 'VALID',
-          verified_on: new Date().toISOString().split('T')[0],
-          valid_until: validUntil.toISOString().split('T')[0],
-          issued_by: app.officer_name,
-          verification_url: verificationLink,
-        })
-        .select()
-        .single();
+      const { data: userData } = await supabase.auth.getUser();
+      const signingPayload = `${app.id}|${app.serial_number}|${validUntil.toISOString().split('T')[0]}|${userData.user?.email || ''}`;
+      const { data: signingResult, error: signingError } = await supabase.functions.invoke('sign-certificate', {
+        body: { payload: signingPayload },
+      });
+      if (signingError || !signingResult?.signature) throw signingError || new Error('Certificate signing service did not return a signature');
+      const { data: cert, error: certError } = await supabase.rpc('issue_signed_certificate', {
+        application_id_input: app.id,
+        valid_until_input: validUntil.toISOString().split('T')[0],
+        signature_input: signingResult.signature,
+      });
       if (certError) throw certError;
-
-      await updateAppStatus(app, 'Certificate Issued', 'certificate', 'Certificate Issued', `Digital certificate ${certId} issued. Valid until ${formatDate(cert.valid_until)}.`, 'Completed');
+      if (!cert) throw new Error('Certificate was not created');
       await loadApplications();
     } catch {
       setError('Failed to issue certificate. Please try again.');
@@ -352,7 +335,7 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
             </div>
           ) : (
             <>
-              {tab === 'overview' && <OverviewTab stats={stats} applications={applications} onView={loadAppDetail} />}
+              {tab === 'overview' && <OverviewTab stats={stats} applications={applications} onView={loadAppDetail} impactMetrics={impactMetrics} />}
               {tab === 'applications' && (
                 <ApplicationsTab
                   applications={filteredApps}
@@ -382,7 +365,7 @@ export default function OfficerDashboard({ onNavigate, onLogout }: OfficerDashbo
 
 /* ---------- Overview ---------- */
 
-function OverviewTab({ stats, applications, onView }: { stats: { total: number; pending: number; inspections: number; issued: number }; applications: VerificationApplication[]; onView: (app: VerificationApplication) => void }) {
+function OverviewTab({ stats, applications, onView, impactMetrics }: { stats: { total: number; pending: number; inspections: number; issued: number }; applications: VerificationApplication[]; onView: (app: VerificationApplication) => void; impactMetrics: { total_applications: number; certificates_issued: number; cases_needing_correction: number; average_processing_days: number } | null }) {
   const recent = applications.slice(0, 5);
   const cards = [
     { label: 'Total Applications', value: stats.total, icon: FileCheck, color: 'blue' },
@@ -408,6 +391,24 @@ function OverviewTab({ stats, applications, onView }: { stats: { total: number; 
             <div className="text-sm text-gray-500">{card.label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-semibold text-emerald-950">Public-service impact</h2>
+            <p className="text-xs text-emerald-800 mt-1">Live database metrics for the current workflow.</p>
+          </div>
+          <TrendingUp className="w-5 h-5 text-emerald-700" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            ['Applications', impactMetrics?.total_applications ?? stats.total],
+            ['Certificates', impactMetrics?.certificates_issued ?? stats.issued],
+            ['Corrections', impactMetrics?.cases_needing_correction ?? 0],
+            ['Avg. days', impactMetrics?.average_processing_days ?? 0],
+          ].map(([label, value]) => <div key={label} className="rounded-lg bg-white/80 p-3"><div className="text-xl font-bold text-emerald-950">{value}</div><div className="text-xs text-emerald-800">{label}</div></div>)}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">

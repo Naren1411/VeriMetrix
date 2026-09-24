@@ -62,7 +62,7 @@ const STEPS = [
     details: [
       'Inspection date, time slot, and location are communicated to the applicant.',
       'Category-specific inspection checklists are prepared for the instrument type.',
-      'The applicant receives a notification with the inspection schedule.',
+      'The workflow records the inspection schedule and can deliver notifications when a provider is configured.',
     ],
   },
   {
@@ -85,7 +85,7 @@ const STEPS = [
     details: [
       'Certificate includes a unique certificate ID, instrument details, verification date, and expiry date.',
       'A QR code is generated for instant public verification.',
-      'The certificate is available for download from the applicant dashboard.',
+      'The certificate can be verified publicly through its certificate ID and QR link.',
       'The certificate status is recorded as VALID in the public registry.',
     ],
   },
@@ -105,8 +105,8 @@ const STEPS = [
     title: 'Step 8 — Renewal',
     desc: 'Certificates are valid for a fixed period. Renewal ensures continued compliance.',
     details: [
-      'Automated reminders are sent 60, 30, and 7 days before certificate expiry.',
-      'The applicant initiates a renewal application from their dashboard.',
+      'The system records expiry and surfaces renewal candidates to officers.',
+      'A renewal request is created from the existing verified instrument record.',
       'The renewal follows the same review and inspection workflow.',
       'A new certificate is issued with an updated validity period.',
     ],

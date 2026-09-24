@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Search,
   Loader2,
@@ -31,14 +31,35 @@ interface TrackPageProps {
 
 export default function TrackPage({ onNavigate }: TrackPageProps) {
   const [query, setQuery] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [application, setApplication] = useState<VerificationApplication | null>(null);
   const [events, setEvents] = useState<WorkflowEvent[]>([]);
+  const applicationId = application?.id;
+
+  useEffect(() => {
+    if (!applicationId || !query.trim()) return;
+
+    const refreshApplication = async () => {
+      const { data: result } = await supabase.rpc('public_track_application', {
+        application_number_input: query.trim().toUpperCase(),
+        email_input: email.trim().toLowerCase(),
+      });
+      const data = result && Object.keys(result).length > 0 ? result as VerificationApplication & { workflow_events?: WorkflowEvent[] } : null;
+      if (data) {
+        setApplication(data);
+        setEvents(data.workflow_events || []);
+      }
+    };
+
+    const refreshTimer = window.setInterval(refreshApplication, 15000);
+    return () => window.clearInterval(refreshTimer);
+  }, [applicationId, email, query]);
 
   const handleSearch = async () => {
-    if (!query.trim()) {
-      setError('Please enter an application number.');
+    if (!query.trim() || !email.trim()) {
+      setError('Please enter your application number and email address.');
       return;
     }
     setLoading(true);
@@ -48,6 +69,7 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
     try {
       const { data: result, error: fetchError } = await supabase.rpc('public_track_application', {
         application_number_input: query.trim().toUpperCase(),
+        email_input: email.trim().toLowerCase(),
       });
 
       if (fetchError) throw fetchError;
@@ -73,12 +95,12 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Track Your Application</h1>
-          <p className="text-gray-500">Enter your application number to see the current status and full history.</p>
+          <p className="text-gray-500">Enter your application number and email to see the current status and full history.</p>
         </div>
 
         {/* Search */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
@@ -90,14 +112,24 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
                 className="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
               />
             </div>
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-blue-900 text-white font-semibold hover:bg-blue-800 disabled:opacity-60 transition-colors"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-              {loading ? 'Searching...' : 'Track'}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Email used in the application"
+                className="flex-1 px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              />
+              <button
+                onClick={handleSearch}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-blue-900 text-white font-semibold hover:bg-blue-800 disabled:opacity-60 transition-colors"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                {loading ? 'Searching...' : 'Track'}
+              </button>
+            </div>
           </div>
           {error && (
             <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">

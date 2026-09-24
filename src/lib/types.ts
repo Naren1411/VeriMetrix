@@ -53,6 +53,11 @@ export interface CertificateRecord {
   issued_by: string;
   created_at: string;
   verification_url?: string;
+  certificate_hash?: string;
+  signature_valid?: boolean;
+  signature_present?: boolean;
+  revoked_at?: string | null;
+  revocation_reason?: string | null;
 }
 
 export interface InspectionSchedule {
@@ -193,7 +198,9 @@ export function generateApplicationNumber(state: string, district: string): stri
   const stateCode = state.slice(0, 2).toUpperCase();
   const districtCode = district.slice(0, 2).toUpperCase();
   const year = new Date().getFullYear();
-  const random = Math.floor(1000 + Math.random() * 9000);
+  const randomBytes = new Uint32Array(2);
+  crypto.getRandomValues(randomBytes);
+  const random = Array.from(randomBytes, (value) => value.toString(36).toUpperCase()).join('').slice(0, 10);
   return `VMX-${stateCode}${districtCode}-${year}-${random}`;
 }
 
