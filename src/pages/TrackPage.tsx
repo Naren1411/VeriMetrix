@@ -96,6 +96,7 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
         <div className="text-center mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Track Your Application</h1>
           <p className="text-gray-500">Enter your application number and email to see the current status and full history.</p>
+          <p className="text-xs text-blue-700 mt-2">Use the exact email address you entered on the application form.</p>
         </div>
 
         {/* Search */}
