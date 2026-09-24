@@ -43,8 +43,8 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
 
     const refreshApplication = async () => {
       const { data: result } = await supabase.rpc('public_track_application', {
-        application_number_input: query.trim().toUpperCase(),
-        email_input: email.trim().toLowerCase(),
+        application_number_input: query.trim().toUpperCase() || null,
+        email_input: email.trim().toLowerCase() || null,
       });
       const data = result && Object.keys(result).length > 0 ? result as VerificationApplication & { workflow_events?: WorkflowEvent[] } : null;
       if (data) {
@@ -58,8 +58,8 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
   }, [applicationId, email, query]);
 
   const handleSearch = async () => {
-    if (!query.trim() || !email.trim()) {
-      setError('Please enter your application number and email address.');
+    if (!query.trim() && !email.trim()) {
+      setError('Enter either your application number or email address.');
       return;
     }
     setLoading(true);
@@ -68,8 +68,8 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
     setEvents([]);
     try {
       const { data: result, error: fetchError } = await supabase.rpc('public_track_application', {
-        application_number_input: query.trim().toUpperCase(),
-        email_input: email.trim().toLowerCase(),
+        application_number_input: query.trim().toUpperCase() || null,
+        email_input: email.trim().toLowerCase() || null,
       });
 
       if (fetchError) throw fetchError;
@@ -95,8 +95,8 @@ export default function TrackPage({ onNavigate }: TrackPageProps) {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Track Your Application</h1>
-          <p className="text-gray-500">Enter your application number and email to see the current status and full history.</p>
-          <p className="text-xs text-blue-700 mt-2">Use the exact email address you entered on the application form.</p>
+          <p className="text-gray-500">Enter your application number or email to see the current status and full history.</p>
+          <p className="text-xs text-blue-700 mt-2">Either field is enough. Providing both gives the most precise match.</p>
         </div>
 
         {/* Search */}
