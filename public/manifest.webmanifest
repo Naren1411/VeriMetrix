@@ -1,0 +1,10 @@
+{
+  "name": "VeriMetrix Legal Metrology Portal",
+  "short_name": "VeriMetrix",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f3d56",
+  "description": "Apply, inspect, certify, and publicly verify measuring instruments.",
+  "icons": []
+}
